@@ -1,0 +1,123 @@
+{
+  "name": "whatspp-automation",
+  "version": "1.0.0",
+  "description": "WhatsApp Automation Desktop App",
+  "main": "public/electron.js",
+  "homepage": "./",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:vite\" \"npm run dev:electron\"",
+    "dev:vite": "vite",
+    "dev:electron": "wait-on tcp:5173 && cross-env IS_DEV=true electron .",
+    "build": "vite build",
+    "build:electron": "npm run build && electron-builder",
+    "build:installer": "node build.js",
+    "build:portable": "npm run build && electron-builder --win portable",
+    "preview": "vite preview",
+    "dist": "npm run build && electron-builder --publish=never",
+    "dist:dir": "npm run build && electron-builder --dir",
+    "clean": "rimraf dist dist-electron",
+    "postinstall": "electron-builder install-app-deps"
+  },
+  "keywords": [
+    "electron",
+    "react",
+    "whatsapp",
+    "automation"
+  ],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "cross-env": "^7.0.3",
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1",
+    "rimraf": "^5.0.5",
+    "wait-on": "^7.2.0"
+  },
+  "dependencies": {
+    "@phosphor-icons/react": "^2.0.15",
+    "@vitejs/plugin-react": "^4.2.0",
+    "autoprefixer": "^10.4.16",
+    "postcss": "^8.4.32",
+    "qrcode": "^1.5.4",
+    "qrcode-terminal": "^0.12.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.20.1",
+    "tailwindcss": "^3.3.6",
+    "vite": "^5.0.0",
+    "whatsapp-web.js": "^1.31.0"
+  },
+  "build": {
+    "appId": "com.whatsapp.automation",
+    "productName": "WhatsApp Automation",
+    "directories": {
+      "output": "dist-electron"
+    },
+    "files": [
+      "public/electron.js",
+      "public/preload.js",
+      "src/services/**/*",
+      "dist/**/*",
+      "node_modules/**/*",
+      "!node_modules/.cache/**/*",
+      "!node_modules/@types/**/*",
+      "!node_modules/typescript/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "assets",
+        "to": "assets",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "icon": "assets/icon.icns",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ]
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "requestedExecutionLevel": "asInvoker"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "WhatsApp Automation",
+      "deleteAppDataOnUninstall": true,
+      "include": "installer.nsh"
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.png",
+      "category": "Utility"
+    },
+    "publish": null
+  }
+}
