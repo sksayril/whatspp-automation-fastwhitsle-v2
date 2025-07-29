@@ -31,6 +31,30 @@ contextBridge.exposeInMainWorld('electronAPI', {
     removeAllListeners: (channel) => ipcRenderer.removeAllListeners(channel)
   },
   
+  // Template APIs
+  templates: {
+    getAll: () => ipcRenderer.invoke('templates:getAll'),
+    create: (template) => ipcRenderer.invoke('templates:create', template),
+    update: (id, template) => ipcRenderer.invoke('templates:update', id, template),
+    delete: (id) => ipcRenderer.invoke('templates:delete', id),
+    getById: (id) => ipcRenderer.invoke('templates:getById', id),
+    search: (query) => ipcRenderer.invoke('templates:search', query),
+    getByCategory: (category) => ipcRenderer.invoke('templates:getByCategory', category),
+    getAttachment: (templateId) => ipcRenderer.invoke('templates:getAttachment', templateId),
+    saveAttachment: (templateId, attachment) => ipcRenderer.invoke('templates:saveAttachment', templateId, attachment)
+  },
+
+  // Quick Reply APIs
+  quickReplies: {
+    getAll: () => ipcRenderer.invoke('quickReplies:getAll'),
+    create: (quickReply) => ipcRenderer.invoke('quickReplies:create', quickReply),
+    update: (id, quickReply) => ipcRenderer.invoke('quickReplies:update', id, quickReply),
+    delete: (id) => ipcRenderer.invoke('quickReplies:delete', id),
+    getById: (id) => ipcRenderer.invoke('quickReplies:getById', id),
+    toggleActive: (id) => ipcRenderer.invoke('quickReplies:toggleActive', id),
+    updateStats: (id, triggered) => ipcRenderer.invoke('quickReplies:updateStats', id, triggered)
+  },
+  
   // Example method for getting app info
   getAppInfo: () => ({
     name: 'WhatsApp Automation',

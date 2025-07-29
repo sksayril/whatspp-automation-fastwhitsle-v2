@@ -387,19 +387,19 @@ const ConnectWhatsApp = () => {
           <div>
             <h4 className="font-medium text-gray-900 mb-2">For Best Results:</h4>
             <ul className="space-y-1 text-gray-600">
-              <li key="tip-1">• Keep your phone connected to the internet</li>
-              <li key="tip-2">• Don't log out of WhatsApp on your phone</li>
-              <li key="tip-3">• Use a stable internet connection</li>
-              <li key="tip-4">• Keep the app running in the background</li>
+              <li>• Keep your phone connected to the internet</li>
+              <li>• Don't log out of WhatsApp on your phone</li>
+              <li>• Use a stable internet connection</li>
+              <li>• Keep the app running in the background</li>
             </ul>
           </div>
           <div>
             <h4 className="font-medium text-gray-900 mb-2">Troubleshooting:</h4>
             <ul className="space-y-1 text-gray-600">
-              <li key="trouble-1">• If connection fails, try reconnecting</li>
-              <li key="trouble-2">• Make sure WhatsApp is up to date</li>
-              <li key="trouble-3">• Check your internet connection</li>
-              <li key="trouble-4">• Restart the app if needed</li>
+              <li>• If connection fails, try reconnecting</li>
+              <li>• Make sure WhatsApp is up to date</li>
+              <li>• Check your internet connection</li>
+              <li>• Restart the app if needed</li>
             </ul>
           </div>
         </div>

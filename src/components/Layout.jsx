@@ -10,7 +10,9 @@ import {
   SignOut,
   User,
   Bell,
-  MagnifyingGlass
+  MagnifyingGlass,
+  Users,
+  PaperPlane // Add this import
 } from '@phosphor-icons/react'
 
 const Layout = ({ children, onLogout }) => {
@@ -18,12 +20,13 @@ const Layout = ({ children, onLogout }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
   const navigation = [
-    { name: 'Dashboard', href: '/dashboard', icon: House },
-    { name: 'My Tasks', href: '/my-tasks', icon: List },
-    { name: 'Connect WhatsApp', href: '/connect-whatsapp', icon: WhatsappLogo },
-    { name: 'Send Messages', href: '/send-messages', icon: ChatCircle },
-    { name: 'Templates', href: '/templates', icon: FileText },
+    { name: 'Dashboard', href: '/', icon: House },
+    { name: 'Connect WhatsApp', href: '/connect-whatsapp', icon: WhatsappLogo }, // Fix this path
+    { name: 'Send Messages', href: '/send-messages', icon: PaperPlane },
     { name: 'Quick Reply', href: '/quick-reply', icon: Lightning },
+    { name: 'Customers', href: '/customers', icon: Users },
+    { name: 'Templates', href: '/templates', icon: List },
+    { name: 'My Tasks', href: '/my-tasks', icon: List }
   ]
 
   const isActive = (path) => location.pathname === path

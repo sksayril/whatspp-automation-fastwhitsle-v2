@@ -1,5 +1,10 @@
-// Note: This service is designed for Electron backend
-// In browser environment, it will use mock data
+const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
+const qrcode = require('qrcode');
+const fs = require('fs');
+const path = require('path');
+const QuickReplyService = require('./quickReplyService')
+const TemplateService = require('./templateService')
+
 class WhatsAppService {
   constructor() {
     this.clients = new Map(); // Store multiple clients
@@ -13,6 +18,8 @@ class WhatsAppService {
     this.onQRCodeChange = null;
     this.onMessageReceived = null;
     this.onQuickReplySent = null;
+    this.quickReplyService = new QuickReplyService()
+    this.templateService = new TemplateService()
   }
 
   initialize(accountId, accountName = '') {
@@ -79,10 +86,8 @@ class WhatsAppService {
         this.onMessageReceived(accountId, message);
       }
 
-      // Check for quick replies
-      if (!message.fromMe) {
-        await this.processQuickReplies(accountId, message);
-      }
+      // Process quick replies
+      await this.handleIncomingMessage(accountId, message)
     });
 
     // Disconnected event
@@ -490,7 +495,28 @@ class WhatsAppService {
 
       for (const reply of activeReplies) {
         if (await this.shouldTriggerQuickReply(reply, message)) {
-          await this.sendQuickReply(accountId, message, reply);
+          // Check if this is a response to a numbered template
+          if (reply.numberedOptions && reply.numberedOptions.length > 0) {
+            const selectedNumber = parseInt(message.body.trim());
+            if (!isNaN(selectedNumber) && selectedNumber > 0 && selectedNumber <= reply.numberedOptions.length) {
+              // User selected a valid number, send the corresponding response
+              const selectedOption = reply.numberedOptions[selectedNumber - 1];
+              await this.sendMessage(accountId, message.from, selectedOption.response);
+            } else {
+              // Send the template with numbered options
+              const template = this.getTemplate(accountId, reply.templateId);
+              if (template) {
+                let fullMessage = template.content + '\n\nPlease select an option:\n';
+                reply.numberedOptions.forEach(option => {
+                  fullMessage += `${option.number}. ${option.response}\n`;
+                });
+                await this.sendMessage(accountId, message.from, fullMessage);
+              }
+            }
+          } else {
+            // Regular quick reply without numbered options
+            await this.sendQuickReply(accountId, message, reply);
+          }
           break; // Only send one quick reply per message
         }
       }
@@ -499,77 +525,175 @@ class WhatsAppService {
     }
   }
 
-  async shouldTriggerQuickReply(reply, message) {
-    // Check if current time is within allowed time range
-    if (!this.isWithinTimeRange(reply.conditions)) {
-      return false;
-    }
+  async handleIncomingMessage(accountId, message) {
+    try {
+      // Don't process our own messages
+      if (message.fromMe) {
+        console.log('Skipping own message')
+        return
+      }
 
-    // Check if current day is within allowed days
-    if (!this.isWithinDayRange(reply.conditions)) {
-      return false;
-    }
+      console.log('Processing incoming message:', {
+        from: message.from,
+        body: message.body,
+        accountId: accountId
+      })
 
-    // Check trigger conditions
-    switch (reply.trigger) {
-      case 'all':
-        return true;
+      // Get all active quick replies
+      const result = await this.quickReplyService.getAll()
+      if (!result.success) {
+        console.error('Failed to get quick replies:', result.error)
+        return
+      }
+
+      console.log('Found quick replies:', result.quickReplies.length)
+      const activeQuickReplies = result.quickReplies.filter(qr => qr.isActive)
+      console.log('Active quick replies:', activeQuickReplies.length)
+
+      // First check if this is a response to a numbered option
+      for (const quickReply of activeQuickReplies) {
+        if (!quickReply.options || quickReply.options.length === 0) continue
+
+        const selectedNumber = parseInt(message.body.trim())
+        if (!isNaN(selectedNumber) && selectedNumber > 0 && selectedNumber <= quickReply.options.length) {
+          console.log('Processing number selection:', selectedNumber)
+          const selectedOption = quickReply.options[selectedNumber - 1]
+          const optionTemplateResult = await this.templateService.getById(selectedOption.responseTemplateId)
+          
+          if (optionTemplateResult.success && optionTemplateResult.template) {
+            console.log('Sending option response for number:', selectedNumber)
+            await this.sendMessage(accountId, message.from, optionTemplateResult.template.content)
+            await this.quickReplyService.updateStats(quickReply.id, true)
+            return // Exit after handling number response
+          }
+        }
+      }
+
+      // Then check for trigger matches
+      for (const quickReply of activeQuickReplies) {
+        console.log('Checking quick reply:', quickReply.name)
+        const shouldTrigger = await this.shouldTriggerQuickReply(quickReply, message)
+        
+        if (shouldTrigger) {
+          console.log('Quick reply triggered:', quickReply.name)
+          // Get the initial template
+          const templateResult = await this.templateService.getById(quickReply.templateId)
+          if (!templateResult.success || !templateResult.template) {
+            console.error('Failed to get template:', quickReply.templateId)
+            continue
+          }
+
+          // Build the message with options
+          let messageContent = templateResult.template.content
+
+          if (quickReply.options && quickReply.options.length > 0) {
+            messageContent += '\n\nPlease select an option:\n'
+            for (const option of quickReply.options) {
+              const optionTemplateResult = await this.templateService.getById(option.responseTemplateId)
+              if (optionTemplateResult.success && optionTemplateResult.template) {
+                messageContent += `${option.number}. ${optionTemplateResult.template.name}\n`
+              }
+            }
+          }
+
+          // Add delay if specified
+          if (quickReply.delay > 0) {
+            console.log('Applying delay:', quickReply.delay)
+            await new Promise(resolve => setTimeout(resolve, quickReply.delay * 1000))
+          }
+
+          console.log('Sending quick reply message:', messageContent)
+          const sendResult = await this.sendMessage(accountId, message.from, messageContent)
+          
+          if (sendResult.success) {
+            console.log('Quick reply message sent successfully')
+            await this.quickReplyService.updateStats(quickReply.id, true)
+          } else {
+            console.error('Failed to send quick reply message:', sendResult.error)
+          }
+          
+          break // Only trigger one quick reply per message
+        }
+      }
+    } catch (error) {
+      console.error('Error handling incoming message:', error)
+    }
+  }
+
+  async shouldTriggerQuickReply(quickReply, message) {
+    try {
+      console.log('Checking trigger conditions for:', quickReply.name)
       
-      case 'specific_user':
-        return this.matchesUser(message, reply.userPhone);
-      
-      case 'keywords':
-        return this.matchesKeywords(message, reply.keywords);
-      
-      default:
-        return false;
+      // Check time restrictions
+      if (quickReply.timeFrom && quickReply.timeTo) {
+        const now = new Date()
+        const currentTime = now.getHours() * 60 + now.getMinutes()
+        
+        const [fromHour, fromMinute] = quickReply.timeFrom.split(':').map(Number)
+        const [toHour, toMinute] = quickReply.timeTo.split(':').map(Number)
+        
+        const fromTime = fromHour * 60 + fromMinute
+        const toTime = toHour * 60 + toMinute
+        
+        if (fromTime <= toTime) {
+          if (currentTime < fromTime || currentTime > toTime) {
+            console.log('Outside time range')
+            return false
+          }
+        } else {
+          // Handle overnight ranges (e.g., 22:00 to 06:00)
+          if (currentTime < fromTime && currentTime > toTime) {
+            console.log('Outside overnight time range')
+            return false
+          }
+        }
+      }
+
+      // Check day restrictions
+      if (quickReply.daysOfWeek && quickReply.daysOfWeek.length > 0) {
+        const currentDay = new Date().getDay()
+        if (!quickReply.daysOfWeek.includes(currentDay)) {
+          console.log('Outside day range')
+          return false
+        }
+      }
+
+      // Check trigger type
+      console.log('Checking trigger type:', quickReply.triggerType)
+      switch (quickReply.triggerType) {
+        case 'all':
+          console.log('Trigger type: all - always true')
+          return true
+
+        case 'keywords':
+          if (!quickReply.triggerPattern) {
+            console.log('No trigger pattern for keywords')
+            return false
+          }
+          const keywords = quickReply.triggerPattern.toLowerCase().split(',').map(k => k.trim())
+          const messageText = message.body.toLowerCase()
+          const matches = keywords.some(keyword => messageText.includes(keyword))
+          console.log('Keyword match result:', matches, 'for keywords:', keywords)
+          return matches
+
+        case 'specific_user':
+          if (!quickReply.triggerPattern) {
+            console.log('No trigger pattern for specific user')
+            return false
+          }
+          const userPhone = message.from.replace('@c.us', '')
+          const userMatch = userPhone === quickReply.triggerPattern
+          console.log('User match result:', userMatch, 'for user:', userPhone)
+          return userMatch
+
+        default:
+          console.log('Unknown trigger type:', quickReply.triggerType)
+          return false
+      }
+    } catch (error) {
+      console.error('Error checking quick reply trigger:', error)
+      return false
     }
-  }
-
-  isWithinTimeRange(conditions) {
-    if (!conditions.timeFrom || !conditions.timeTo) {
-      return true; // No time restriction
-    }
-
-    const now = new Date();
-    const currentTime = now.getHours() * 60 + now.getMinutes();
-    
-    const [fromHour, fromMinute] = conditions.timeFrom.split(':').map(Number);
-    const [toHour, toMinute] = conditions.timeTo.split(':').map(Number);
-    
-    const fromTime = fromHour * 60 + fromMinute;
-    const toTime = toHour * 60 + toMinute;
-
-    if (fromTime <= toTime) {
-      return currentTime >= fromTime && currentTime <= toTime;
-    } else {
-      // Handle overnight ranges (e.g., 22:00 to 06:00)
-      return currentTime >= fromTime || currentTime <= toTime;
-    }
-  }
-
-  isWithinDayRange(conditions) {
-    if (!conditions.daysOfWeek || conditions.daysOfWeek.length === 0) {
-      return true; // No day restriction
-    }
-
-    const currentDay = new Date().getDay();
-    return conditions.daysOfWeek.includes(currentDay);
-  }
-
-  matchesUser(message, userPhone) {
-    const messageFrom = message.from.replace('@c.us', '');
-    const cleanUserPhone = userPhone.replace(/\D/g, '');
-    return messageFrom.includes(cleanUserPhone);
-  }
-
-  matchesKeywords(message, keywords) {
-    if (!keywords) return false;
-    
-    const keywordList = keywords.split(',').map(k => k.trim().toLowerCase());
-    const messageText = message.body.toLowerCase();
-    
-    return keywordList.some(keyword => messageText.includes(keyword));
   }
 
   async sendQuickReply(accountId, originalMessage, reply) {
@@ -621,48 +745,6 @@ class WhatsAppService {
       inactive: quickReplies.filter(reply => !reply.isActive).length
     };
   }
-
-  // Initialize auto-reply functionality
-  initializeAutoReply() {
-    if (!window.electronAPI || !window.electronAPI.whatsapp) {
-      console.log('Auto-reply not available in browser environment')
-      return
-    }
-
-    // Check if the whatsapp API has the 'on' method
-    if (typeof window.electronAPI.whatsapp.on !== 'function') {
-      console.log('WhatsApp API does not support event listeners in this environment')
-      return
-    }
-
-    // Listen for incoming messages
-    window.electronAPI.whatsapp.on('message', async (data) => {
-      try {
-        const { accountId, message } = data
-        
-        // Process auto-reply
-        await this.processAutoReply(accountId, message)
-      } catch (error) {
-        console.error('Error processing auto-reply:', error)
-      }
-    })
-  }
-
-  // Process auto-reply for incoming message
-  async processAutoReply(accountId, message) {
-    try {
-      // In browser environment, we'll use localStorage-based processing
-      if (!window.electronAPI || !window.electronAPI.whatsapp) {
-        console.log('Auto-reply processing in browser environment')
-        return
-      }
-      
-      // For Electron environment, the backend will handle this
-      console.log('Auto-reply processing in Electron environment')
-    } catch (error) {
-      console.error('Error in auto-reply processing:', error)
-    }
-  }
 }
 
-export default WhatsAppService; 
+module.exports = WhatsAppService; 

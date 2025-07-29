@@ -15,8 +15,7 @@ import {
   Pause,
   Export,
   Upload,
-  ChartLine,
-  WhatsappLogo
+  ChartLine
 } from '@phosphor-icons/react'
 
 const QuickReply = () => {
@@ -34,8 +33,6 @@ const QuickReply = () => {
     })
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState(null)
-    const [accounts, setAccounts] = useState([])
-    const [autoReplyEnabled, setAutoReplyEnabled] = useState(true)
     const [formData, setFormData] = useState({
       name: '',
       trigger: 'all', // all, specific_user, keywords
@@ -44,12 +41,12 @@ const QuickReply = () => {
       templateId: '',
       delay: 0,
       isActive: true,
-      accountId: '', // WhatsApp account to use
       conditions: {
         timeFrom: '',
         timeTo: '',
         daysOfWeek: []
-      }
+      },
+      numberedOptions: [] // Add this new field
     })
 
     const daysOfWeek = [
@@ -72,19 +69,6 @@ const QuickReply = () => {
       setError(null)
       
       try {
-        // Load WhatsApp accounts
-        if (window.electronAPI && window.electronAPI.whatsapp) {
-          const accountsList = await window.electronAPI.whatsapp.getWhatsAppAccounts()
-          setAccounts(accountsList)
-        } else {
-          // Fallback for browser environment
-          console.log('Running in browser environment, using mock data')
-          setAccounts([
-            { id: 'account_1', name: 'Demo Account 1', phone: '+1234567890', isConnected: true },
-            { id: 'account_2', name: 'Demo Account 2', phone: '+0987654321', isConnected: false }
-          ])
-        }
-        
         // Check if we're running in Electron
         if (window.electronAPI && window.electronAPI.whatsapp) {
           // In a real app, these would be API calls to the main process
@@ -106,15 +90,11 @@ const QuickReply = () => {
           ])
         }
         
-        // Load saved quick replies from localStorage
-        const savedReplies = JSON.parse(localStorage.getItem('quickReplies')) || []
-        setQuickReplies(savedReplies)
-        
         // Update stats
         setStats({
-          total: savedReplies.length,
-          active: savedReplies.filter(reply => reply.isActive).length,
-          inactive: savedReplies.filter(reply => !reply.isActive).length,
+          total: quickReplies.length,
+          active: quickReplies.filter(reply => reply.isActive).length,
+          inactive: quickReplies.filter(reply => !reply.isActive).length,
           repliesSent: Math.floor(Math.random() * 100) // Sample data
         })
       } catch (err) {
@@ -139,26 +119,10 @@ const QuickReply = () => {
         const newQuickReply = {
           ...formData,
           id: Date.now().toString(),
-          createdAt: new Date().toISOString(),
-          accountId: selectedAccount // Link to selected WhatsApp account
+          createdAt: new Date().toISOString()
         }
         setQuickReplies(prev => [...prev, newQuickReply])
       }
-      
-      // Save to localStorage
-      const updatedReplies = editingId 
-        ? quickReplies.map(item => item.id === editingId ? { ...formData, id: editingId } : item)
-        : [...quickReplies, { ...formData, id: Date.now().toString(), createdAt: new Date().toISOString(), accountId: selectedAccount }]
-      
-      localStorage.setItem('quickReplies', JSON.stringify(updatedReplies))
-      
-      // Update stats
-      setStats({
-        total: updatedReplies.length,
-        active: updatedReplies.filter(reply => reply.isActive).length,
-        inactive: updatedReplies.filter(reply => !reply.isActive).length,
-        repliesSent: stats.repliesSent
-      })
       
       resetForm()
     }
@@ -170,33 +134,13 @@ const QuickReply = () => {
     }
 
     const handleDelete = (id) => {
-      const updatedReplies = quickReplies.filter(item => item.id !== id)
-      setQuickReplies(updatedReplies)
-      localStorage.setItem('quickReplies', JSON.stringify(updatedReplies))
-      
-      // Update stats
-      setStats({
-        total: updatedReplies.length,
-        active: updatedReplies.filter(reply => reply.isActive).length,
-        inactive: updatedReplies.filter(reply => !reply.isActive).length,
-        repliesSent: stats.repliesSent
-      })
+      setQuickReplies(prev => prev.filter(item => item.id !== id))
     }
 
     const handleToggleActive = (id) => {
-      const updatedReplies = quickReplies.map(item => 
+      setQuickReplies(prev => prev.map(item => 
         item.id === id ? { ...item, isActive: !item.isActive } : item
-      )
-      setQuickReplies(updatedReplies)
-      localStorage.setItem('quickReplies', JSON.stringify(updatedReplies))
-      
-      // Update stats
-      setStats({
-        total: updatedReplies.length,
-        active: updatedReplies.filter(reply => reply.isActive).length,
-        inactive: updatedReplies.filter(reply => !reply.isActive).length,
-        repliesSent: stats.repliesSent
-      })
+      ))
     }
 
     const resetForm = () => {
@@ -208,12 +152,12 @@ const QuickReply = () => {
         templateId: '',
         delay: 0,
         isActive: true,
-        accountId: '',
         conditions: {
           timeFrom: '',
           timeTo: '',
           daysOfWeek: []
-        }
+        },
+        numberedOptions: [] // Reset numbered options
       })
       setShowAddForm(false)
       setEditingId(null)
@@ -231,14 +175,37 @@ const QuickReply = () => {
       }))
     }
 
+    const addNumberedOption = () => {
+      setFormData(prev => ({
+        ...prev,
+        numberedOptions: [
+          ...prev.numberedOptions,
+          { number: prev.numberedOptions.length + 1, response: '' }
+        ]
+      }))
+    }
+
+    const updateNumberedOption = (index, response) => {
+      setFormData(prev => ({
+        ...prev,
+        numberedOptions: prev.numberedOptions.map((option, i) => 
+          i === index ? { ...option, response } : option
+        )
+      }))
+    }
+
+    const removeNumberedOption = (index) => {
+      setFormData(prev => ({
+        ...prev,
+        numberedOptions: prev.numberedOptions
+          .filter((_, i) => i !== index)
+          .map((option, i) => ({ ...option, number: i + 1 }))
+      }))
+    }
+
     const getTemplateName = (templateId) => {
       const template = templates.find(t => t.id === templateId)
       return template ? template.name : 'Unknown Template'
-    }
-
-    const getAccountName = (accountId) => {
-      const account = accounts.find(a => a.id === accountId)
-      return account ? `${account.name} (${account.phone})` : 'Unknown Account'
     }
 
     const getTriggerText = (trigger, userPhone, keywords) => {
@@ -286,55 +253,39 @@ const QuickReply = () => {
       alert(`Testing quick reply: ${quickReply.name}`)
     }
 
-    const handleToggleAutoReply = () => {
-      const newStatus = !autoReplyEnabled
-      setAutoReplyEnabled(newStatus)
-      localStorage.setItem('autoReplyEnabled', JSON.stringify(newStatus))
-    }
-
-    // Load auto-reply status on component mount
-    useEffect(() => {
-      const savedStatus = localStorage.getItem('autoReplyEnabled')
-      if (savedStatus !== null) {
-        setAutoReplyEnabled(JSON.parse(savedStatus))
-      }
-    }, [])
-
     return (
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex justify-between items-center mb-6">
+        <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Quick Reply</h1>
-            <p className="text-gray-600">Set up automatic replies for incoming messages</p>
+            <p className="text-gray-600 mt-1">Set up automatic replies for incoming messages</p>
           </div>
-          
-          <div className="flex items-center space-x-4">
-            <div className="flex items-center space-x-2">
-              <span className="text-sm font-medium text-gray-700">Auto-Reply:</span>
-              <button
-                onClick={handleToggleAutoReply}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 ${
-                  autoReplyEnabled ? 'bg-primary-600' : 'bg-gray-200'
-                }`}
-              >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                    autoReplyEnabled ? 'translate-x-6' : 'translate-x-1'
-                  }`}
-                />
-              </button>
-              <span className={`text-sm ${autoReplyEnabled ? 'text-green-600' : 'text-gray-500'}`}>
-                {autoReplyEnabled ? 'Enabled' : 'Disabled'}
-              </span>
-            </div>
-            
+          <div className="flex items-center space-x-3">
+            <button
+              onClick={handleExport}
+              className="flex items-center px-3 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+              title="Export Quick Replies"
+            >
+              <Export size={18} className="mr-2" />
+              Export
+            </button>
+            <label className="flex items-center px-3 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors cursor-pointer">
+              <Upload size={18} className="mr-2" />
+              Import
+              <input
+                type="file"
+                accept=".json"
+                onChange={handleImport}
+                className="hidden"
+              />
+            </label>
             <button
               onClick={() => setShowAddForm(true)}
-              className="bg-primary-600 text-white px-4 py-2 rounded-lg hover:bg-primary-700 transition-colors flex items-center space-x-2"
+              className="flex items-center px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
             >
-              <Plus size={20} />
-              <span>Add Quick Reply</span>
+              <Plus size={20} className="mr-2" />
+              Add Quick Reply
             </button>
           </div>
         </div>
@@ -456,29 +407,6 @@ const QuickReply = () => {
                     ))}
                   </select>
                 </div>
-              </div>
-
-              {/* WhatsApp Account Selection */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  WhatsApp Account
-                </label>
-                <select
-                  value={formData.accountId}
-                  onChange={(e) => setFormData(prev => ({ ...prev, accountId: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-                  required
-                >
-                  <option value="">Select WhatsApp account</option>
-                  {accounts.map(account => (
-                    <option key={account.id} value={account.id}>
-                      {account.name} ({account.phone}) - {account.isConnected ? 'Connected' : 'Disconnected'}
-                    </option>
-                  ))}
-                </select>
-                <p className="text-sm text-gray-500 mt-1">
-                  Select the WhatsApp account that will send the auto-reply
-                </p>
               </div>
 
               {/* Trigger Settings */}
@@ -623,6 +551,69 @@ const QuickReply = () => {
                 </div>
               </div>
 
+              {/* Numbered Response Options */}
+              {formData.templateId && (
+                <div className="mt-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <label className="block text-sm font-medium text-gray-700">
+                      Numbered Response Options
+                    </label>
+                    <button
+                      type="button"
+                      onClick={addNumberedOption}
+                      className="flex items-center px-3 py-1 text-sm bg-primary-50 text-primary-600 rounded-lg hover:bg-primary-100"
+                    >
+                      <Plus size={16} className="mr-1" />
+                      Add Option
+                    </button>
+                  </div>
+                  
+                  <div className="space-y-3">
+                    {formData.numberedOptions.map((option, index) => (
+                      <div key={index} className="flex items-center space-x-3">
+                        <span className="flex-shrink-0 w-8 h-8 flex items-center justify-center bg-primary-100 text-primary-700 rounded-lg">
+                          {option.number}
+                        </span>
+                        <input
+                          type="text"
+                          value={option.response}
+                          onChange={(e) => updateNumberedOption(index, e.target.value)}
+                          className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                          placeholder={`Response for option ${option.number}`}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => removeNumberedOption(index)}
+                          className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                        >
+                          <Trash size={16} />
+                        </button>
+                      </div>
+                    ))}
+                    
+                    {formData.numberedOptions.length > 0 && (
+                      <div className="mt-4 p-4 bg-gray-50 rounded-lg">
+                        <h4 className="text-sm font-medium text-gray-700 mb-2">Preview:</h4>
+                        <div className="text-sm text-gray-600">
+                          {templates.find(t => t.id === formData.templateId)?.content}
+                          {formData.numberedOptions.length > 0 && (
+                            <>
+                              <br /><br />
+                              Please select an option:<br />
+                              {formData.numberedOptions.map(option => (
+                                <div key={option.number}>
+                                  {option.number}. {option.response}
+                                </div>
+                              ))}
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* Active Status */}
               <div className="flex items-center">
                 <button
@@ -711,7 +702,14 @@ const QuickReply = () => {
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm text-gray-600">
                         <div className="flex items-center">
                           <ChatText size={16} className="mr-2" />
-                          <span>Template: {getTemplateName(quickReply.templateId)}</span>
+                          <span>
+                            Template: {getTemplateName(quickReply.templateId)}
+                            {quickReply.numberedOptions?.length > 0 && (
+                              <span className="ml-2 text-gray-500">
+                                ({quickReply.numberedOptions.length} response options)
+                              </span>
+                            )}
+                          </span>
                         </div>
                         <div className="flex items-center">
                           <User size={16} className="mr-2" />
@@ -722,8 +720,7 @@ const QuickReply = () => {
                           <span>Delay: {quickReply.delay}s</span>
                         </div>
                         <div className="flex items-center">
-                          <WhatsappLogo size={16} className="mr-2" />
-                          <span>Account: {getAccountName(quickReply.accountId)}</span>
+                          <span>Created: {new Date(quickReply.createdAt).toLocaleDateString()}</span>
                         </div>
                       </div>
 
